@@ -184,19 +184,19 @@ async def setup_func():
 async def message_func(event):
     if event.data[0]=="click":
         if event.data[1]=="export":
-            export_func(event)
+            await export_func(event)
         elif event.data[1]=="commit":
-            commit_func(event)
+            await commit_func(event)
         elif event.data[1]=="undo":
-            undo_func(event)
+            await undo_func(event)
     elif event.data[0]=="upload":
-        upload_func(event)
+        await upload_func(event)
     elif event.data[0]=="outpaint":
-        outpaint_func(event)
+        await outpaint_func(event)
     elif event.data[0]=="mode":
         document.querySelector("#mode").value=event.data[1]
     elif event.data[0]=="transfer":
-        transfer_func(event)
+        await transfer_func(event)
     
 window.addEventListener("message",create_proxy(message_func))
 import asyncio
