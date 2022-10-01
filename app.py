@@ -33,7 +33,7 @@ def test(x):
     display-capture; encrypted-media;" sandbox="allow-modals allow-forms 
     allow-scripts allow-same-origin allow-popups 
     allow-top-navigation-by-user-activation allow-downloads" allowfullscreen="" 
-    allowpaymentrequest="" frameborder="0" src='{x}'></iframe>"""
+    allowpaymentrequest="" frameborder="0" srcdoc='{x}'></iframe>"""
 
 
 DEBUG_MODE = False
