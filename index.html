@@ -152,7 +152,7 @@ async def transfer_func(event):
     base.read_selection_from_buffer()
     sel_buffer=base.sel_buffer
     sel_buffer_str=base.numpy_to_base64(sel_buffer)
-    parent.postMessage(["transfer",sel_buffer_str],"*")
+    parent.postMessage(to_js(["transfer",str(sel_buffer_str)]),"*")
 
 async def upload_func(event):
     base=base_lst[0]
