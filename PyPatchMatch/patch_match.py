@@ -22,7 +22,7 @@ except ImportError as e:
     # Otherwise, fall back to the subprocess.
     import subprocess
     print('Compiling and loading c extensions from "{}".'.format(osp.realpath(osp.dirname(__file__))))
-    subprocess.check_call(['./travis.sh'], cwd=osp.dirname(__file__))
+    subprocess.check_call("make clean && make", cwd=osp.dirname(__file__), shell=True)
 
 
 __all__ = ['set_random_seed', 'set_verbose', 'inpaint', 'inpaint_regularity']
