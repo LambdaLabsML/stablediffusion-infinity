@@ -166,6 +166,7 @@ async def upload_func(event):
     base.buffer[yo:yo+h,xo:xo+w,0:3]=arr[:,:,0:3]
     base.buffer[yo:yo+h,xo:xo+w,-1]=arr[:,:,-1]
     base.draw_buffer()
+    base.canvas[-2].clear()
 
   
 
