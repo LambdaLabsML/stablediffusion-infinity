@@ -29,11 +29,11 @@ def load_html():
 
 def test(x):
     x = load_html()
-    return f"""<iframe id="sdinfframe" style="width: 100%; height: 700px" name="result" allow="midi; geolocation; microphone; camera; 
+    return f"""<iframe id="sdinfframe" style="width: 100%; height: 600px" name="result" allow="midi; geolocation; microphone; camera; 
     display-capture; encrypted-media;" sandbox="allow-modals allow-forms 
     allow-scripts allow-same-origin allow-popups 
     allow-top-navigation-by-user-activation allow-downloads" allowfullscreen="" 
-    allowpaymentrequest="" frameborder="0" srcdoc='{x}'></iframe>"""
+    allowpaymentrequest="" frameborder="0" src='{x}'></iframe>"""
 
 
 DEBUG_MODE = False
