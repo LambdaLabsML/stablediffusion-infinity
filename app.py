@@ -14,7 +14,11 @@ import skimage
 import skimage.measure
 from utils import *
 
-cuda_available = torch.cuda.is_available()
+try:
+    cuda_available = torch.cuda.is_available()
+except:
+    cuda_available = False
+
 def load_html():
     body, canvaspy = "", ""
     with open("index.html", encoding="utf8") as f:
@@ -224,9 +228,8 @@ outpaint_button_js = load_js("outpaint")
 proceed_button_js = load_js("proceed")
 mode_js = load_js("mode")
 setup_button_js = load_js("setup")
-if not torch.cuda.is_available():
-    def get_model(x):
-        pass
+if not cuda_available:
+    get_model = lambda x:x
 get_model(get_token())
 
 with blocks as demo:
