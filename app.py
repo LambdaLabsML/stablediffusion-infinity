@@ -192,15 +192,8 @@ def load_js(name):
         return f"""
 function (x)
 {{ 
-    console.log(document.querySelector("gradio-app"));
-    console.log(document.querySelector("iframe"));
-    console.log(document.querySelector("#sdinfframe").contentWindow);
-    console.log(document.querySelector("#sdinfframe").contentWindow.document);
-    console.log(document.querySelector("#sdinfframe").contentWindow.document.querySelector("#{name}");
-    console.log(document.querySelector("#sdinfframe").contentDocument);
-    let frame=document.querySelector("gradio-app").shadowRoot.querySelector("#sdinfframe").contentWindow.document;
-    let button=frame.querySelector("#{name}");
-    button.click();
+    let frame=document.querySelector("gradio-app").shadowRoot.querySelector("#sdinfframe").contentWindow;
+    frame.postMessage(["click","{name}"], "*");
     return x;
 }}
 """
