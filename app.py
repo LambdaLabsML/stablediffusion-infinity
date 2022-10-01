@@ -192,6 +192,8 @@ def load_js(name):
         return f"""
 function (x)
 {{ 
+    console.log(document.querySelector("gradio-app"));
+    console.log(document.querySelector("iframe"));
     let frame=document.querySelector("gradio-app").shadowRoot.querySelector("#sdinfframe").contentWindow.document;
     let button=frame.querySelector("#{name}");
     button.click();
