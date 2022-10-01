@@ -102,9 +102,9 @@ async def draw_canvas() -> None:
 
 async def draw_canvas_func(event):
     try:
-        width=parent.document.querySelector("gradio-app").shadowRoot.querySelector("#canvas_width input").value
-        height=parent.document.querySelector("gradio-app").shadowRoot.querySelector("#canvas_height input").value
-        selection_size=parent.document.querySelector("gradio-app").shadowRoot.querySelector("#selection_size input").value
+        width=parent.document.querySelector("gradio-app").querySelector("#canvas_width input").value
+        height=parent.document.querySelector("gradio-app").querySelector("#canvas_height input").value
+        selection_size=parent.document.querySelector("gradio-app").querySelector("#selection_size input").value
     except:
         width=1024
         height=768

@@ -207,7 +207,7 @@ def load_js(name):
         return f"""
 function (x)
 {{ 
-    let frame=document.querySelector("gradio-app").shadowRoot.querySelector("#sdinfframe").contentWindow;
+    let frame=document.querySelector("gradio-app").querySelector("#sdinfframe").contentWindow;
     frame.postMessage(["click","{name}"], "*");
     return x;
 }}
