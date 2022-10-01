@@ -126,6 +126,7 @@ def run_outpaint(
     state,
 ):
     base64_str = "base64"
+    return sel_buffer_str
     if True:
         text2img, inpaint = get_model()
         if enable_safety:
@@ -209,6 +210,8 @@ proceed_button_js = load_js("proceed")
 mode_js = load_js("mode")
 setup_button_js = load_js("setup")
 
+def get_model(x):
+    pass
 get_model(get_token())
 
 with blocks as demo:
