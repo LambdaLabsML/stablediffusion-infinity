@@ -194,6 +194,7 @@ function (x)
 {{ 
     console.log(document.querySelector("gradio-app"));
     console.log(document.querySelector("iframe"));
+    console.log(document.querySelector("#sdinfframe").contentWindow);
     let frame=document.querySelector("gradio-app").shadowRoot.querySelector("#sdinfframe").contentWindow.document;
     let button=frame.querySelector("#{name}");
     button.click();
