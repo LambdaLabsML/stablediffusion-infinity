@@ -252,8 +252,6 @@ with blocks as demo:
     title = gr.Markdown(
         """
     **stablediffusion-infinity**: Outpainting with Stable Diffusion on an infinite canvas: [https://github.com/lkwq007/stablediffusion-infinity](https://github.com/lkwq007/stablediffusion-infinity)
-
-    **This Space does not have GPU at present, so it's unusable (quite slow or can only outputs red tiles when the inference cannot be proceeded)**
     """
     )
     # frame
