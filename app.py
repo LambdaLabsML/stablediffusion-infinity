@@ -355,6 +355,7 @@ with blocks as demo:
         inputs=[image_box, upload_output_state],
         outputs=[upload_output, upload_output_state],
         _js=upload_button_js,
+        queue=False
     )
 
     def setup_func(token_val, width, height, size):
