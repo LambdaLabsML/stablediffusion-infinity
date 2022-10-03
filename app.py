@@ -243,8 +243,8 @@ outpaint_button_js = load_js("outpaint")
 proceed_button_js = load_js("proceed")
 mode_js = load_js("mode")
 setup_button_js = load_js("setup")
-if not cuda_available:
-    get_model = lambda x:x
+# if not cuda_available:
+#     get_model = lambda x:x
 get_model(get_token())
 
 with blocks as demo:
