@@ -18,6 +18,15 @@ try:
     cuda_available = torch.cuda.is_available()
 except:
     cuda_available = False
+finally:
+    if cuda_available:
+        device = "cuda"
+    else:
+        device = "cpu"
+
+if device != "cuda":
+    import contextlib
+    autocast = contextlib.nullcontext
 
 def load_html():
     body, canvaspy = "", ""
@@ -88,12 +97,18 @@ def save_token(token):
 
 def get_model(token=""):
     if "text2img" not in model:
-        text2img = StableDiffusionPipeline.from_pretrained(
-            "CompVis/stable-diffusion-v1-4",
-            revision="fp16",
-            torch_dtype=torch.float16,
-            use_auth_token=token,
-        ).to("cuda")
+        if device=="cuda":
+            text2img = StableDiffusionPipeline.from_pretrained(
+                "CompVis/stable-diffusion-v1-4",
+                revision="fp16",
+                torch_dtype=torch.float16,
+                use_auth_token=token,
+            ).to(device)
+        else:
+            text2img = StableDiffusionPipeline.from_pretrained(
+                "CompVis/stable-diffusion-v1-4",
+                use_auth_token=token,
+            ).to(device)
         model["safety_checker"] = text2img.safety_checker
         inpaint = StableDiffusionInpaintPipeline(
             vae=text2img.vae,
@@ -103,7 +118,7 @@ def get_model(token=""):
             scheduler=text2img.scheduler,
             safety_checker=text2img.safety_checker,
             feature_extractor=text2img.feature_extractor,
-        ).to("cuda")
+        ).to(device)
         save_token(token)
         try:
             total_memory = torch.cuda.get_device_properties(0).total_memory // (
@@ -130,23 +145,23 @@ def run_outpaint(
     state,
 ):
     base64_str = "base64"
-    if not cuda_available:
-        data = base64.b64decode(str(sel_buffer_str))
-        pil = Image.open(io.BytesIO(data))
-        sel_buffer = np.array(pil)
-        sel_buffer[:, :, 3]=255
-        sel_buffer[:, :, 0]=255
-        out_pil = Image.fromarray(sel_buffer)
-        out_buffer = io.BytesIO()
-        out_pil.save(out_buffer, format="PNG")
-        out_buffer.seek(0)
-        base64_bytes = base64.b64encode(out_buffer.read())
-        base64_str = base64_bytes.decode("ascii")
-        return (
-            gr.update(label=str(state + 1), value=base64_str,),
-            gr.update(label="Prompt"),
-            state + 1,
-        )
+    # if not cuda_available:
+    #     data = base64.b64decode(str(sel_buffer_str))
+    #     pil = Image.open(io.BytesIO(data))
+    #     sel_buffer = np.array(pil)
+    #     sel_buffer[:, :, 3]=255
+    #     sel_buffer[:, :, 0]=255
+    #     out_pil = Image.fromarray(sel_buffer)
+    #     out_buffer = io.BytesIO()
+    #     out_pil.save(out_buffer, format="PNG")
+    #     out_buffer.seek(0)
+    #     base64_bytes = base64.b64encode(out_buffer.read())
+    #     base64_str = base64_bytes.decode("ascii")
+    #     return (
+    #         gr.update(label=str(state + 1), value=base64_str,),
+    #         gr.update(label="Prompt"),
+    #         state + 1,
+    #     )
     if True:
         text2img, inpaint = get_model()
         if enable_safety:
@@ -237,6 +252,8 @@ with blocks as demo:
     title = gr.Markdown(
         """
     **stablediffusion-infinity**: Outpainting with Stable Diffusion on an infinite canvas: [https://github.com/lkwq007/stablediffusion-infinity](https://github.com/lkwq007/stablediffusion-infinity)
+
+    **This Space does not have GPU at present, so it's quite slow or can only outputs red squares when the inference cannot be proceeded**
     """
     )
     # frame
