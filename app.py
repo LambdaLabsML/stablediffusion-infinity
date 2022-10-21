@@ -769,7 +769,7 @@ proceed_button_js = load_js("proceed")
 setup_button_js = load_js("setup")
 
 if RUN_IN_SPACE:
-    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING_IMG2IMG.value)
+    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING.value)
 
 blocks = gr.Blocks(
     title="StableDiffusion-Infinity",
