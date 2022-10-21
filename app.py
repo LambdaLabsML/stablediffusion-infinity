@@ -459,6 +459,8 @@ class StableDiffusion:
                     "runwayml/stable-diffusion-inpainting", use_auth_token=token,
                 ).to(device)
             text2img_unet.to(device)
+            del text2img
+            gc.collect()
             text2img = StableDiffusionPipeline(
                 vae=inpaint.vae,
                 text_encoder=inpaint.text_encoder,
@@ -769,7 +771,7 @@ proceed_button_js = load_js("proceed")
 setup_button_js = load_js("setup")
 
 if RUN_IN_SPACE:
-    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING.value)
+    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING_IMG2IMG.value)
 
 blocks = gr.Blocks(
     title="StableDiffusion-Infinity",
@@ -788,7 +790,7 @@ with blocks as demo:
     # title
     title = gr.Markdown(
         """
-    **stablediffusion-infinity**: Outpainting with Stable Diffusion on an infinite canvas: [https://github.com/lkwq007/stablediffusion-infinity](https://github.com/lkwq007/stablediffusion-infinity) [Open_In_Colab](https://colab.research.google.com/github/lkwq007/stablediffusion-infinity/blob/master/stablediffusion_infinity_colab.ipynb) [Setup_Locally](https://github.com/lkwq007/stablediffusion-infinity/blob/master/docs/setup_guide.md)
+    **stablediffusion-infinity**: Outpainting with Stable Diffusion on an infinite canvas: [https://github.com/lkwq007/stablediffusion-infinity](https://github.com/lkwq007/stablediffusion-infinity)  \[[Open In Colab](https://colab.research.google.com/github/lkwq007/stablediffusion-infinity/blob/master/stablediffusion_infinity_colab.ipynb)\]  \[[Setup Locally](https://github.com/lkwq007/stablediffusion-infinity/blob/master/docs/setup_guide.md)\] 
     """,
         elem_id="markdown",
     )
