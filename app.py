@@ -156,10 +156,10 @@ parser.add_argument(
     "--local_model", type=str, help="use a model stored on your PC", default=""
 )
 
-if __name__ == "__main__":
+if __name__ == "__main__" and not RUN_IN_SPACE:
     args = parser.parse_args()
 else:
-    args = parser.parse_args(["--debug"])
+    args = parser.parse_args()
 # args = parser.parse_args(["--debug"])
 if args.auth is not None:
     args.auth = tuple(args.auth)
@@ -788,7 +788,7 @@ with blocks as demo:
     # title
     title = gr.Markdown(
         """
-    **stablediffusion-infinity**: Outpainting with Stable Diffusion on an infinite canvas: [https://github.com/lkwq007/stablediffusion-infinity](https://github.com/lkwq007/stablediffusion-infinity) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lkwq007/stablediffusion-infinity/blob/master/stablediffusion_infinity_colab.ipynb) [![Setup Locally](https://img.shields.io/badge/%F0%9F%96%A5%EF%B8%8F%20Setup-Locally-blue)](https://github.com/lkwq007/stablediffusion-infinity/blob/master/docs/setup_guide.md)
+    **stablediffusion-infinity**: Outpainting with Stable Diffusion on an infinite canvas: [https://github.com/lkwq007/stablediffusion-infinity](https://github.com/lkwq007/stablediffusion-infinity) [Open_In_Colab](https://colab.research.google.com/github/lkwq007/stablediffusion-infinity/blob/master/stablediffusion_infinity_colab.ipynb) [Setup_Locally](https://github.com/lkwq007/stablediffusion-infinity/blob/master/docs/setup_guide.md)
     """,
         elem_id="markdown",
     )

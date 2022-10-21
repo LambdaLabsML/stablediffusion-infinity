@@ -12,5 +12,3 @@ diffusers==0.6.0
 transformers
 ftfy
 fpie
-gradio>=3.6
-fpie
