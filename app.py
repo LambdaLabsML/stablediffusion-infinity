@@ -426,7 +426,7 @@ class StableDiffusion:
             print(f"Loading {model_name}")
             if device == "cuda" and not args.fp32:
                 text2img = StableDiffusionPipeline.from_pretrained(
-                    model_name,
+                    "runwayml/stable-diffusion-v1-5",
                     revision="fp16",
                     torch_dtype=torch.float16,
                     use_auth_token=token,
@@ -654,12 +654,6 @@ class StableDiffusion:
 def get_model(token="", model_choice="", model_path=""):
     if "model" not in model:
         model_name = ""
-        if args.local_model:
-            print(f"Using local_model: {args.local_model}")
-            model_path = args.local_model
-        elif args.remote_model:
-            print(f"Using remote_model: {args.remote_model}")
-            model_name = args.remote_model
         if model_choice == ModelChoice.INPAINTING.value:
             if len(model_name) < 1:
                 model_name = "runwayml/stable-diffusion-inpainting"
