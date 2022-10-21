@@ -863,7 +863,6 @@ with blocks as demo:
                     "cv2_telea",
                     "perlin",
                     "gaussian",
-                    "g_diffuser",
                 ],
                 value="patchmatch",
                 type="value",
