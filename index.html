@@ -137,9 +137,9 @@ async def draw_canvas_func(event):
         height=app.querySelector("#canvas_height input").value
         selection_size=app.querySelector("#selection_size input").value
     except:
-        width=1024
-        height=768
-        selection_size=384
+        width=1500
+        height=600
+        selection_size=256
     document.querySelector("#container").style.width = f"{width}px"
     document.querySelector("#container").style.height= f"{height}px"
     canvas=InfCanvas(int(width),int(height),selection_size=int(selection_size))
@@ -403,7 +403,7 @@ window.addEventListener("message",create_proxy(message_func))
 import asyncio
 
 _ = await asyncio.gather(
-  setup_func()
+  setup_func(),draw_canvas_func()
 )
 </py-script>
 
