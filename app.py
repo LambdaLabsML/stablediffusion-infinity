@@ -671,7 +671,7 @@ def get_model(token="", model_choice="", model_path=""):
             print(
                 f"Note that {ModelChoice.INPAINTING_IMG2IMG.value} only support remote model and requires larger vRAM"
             )
-            tmp = StableDiffusion(token=token, inpainting_model=True)
+            tmp = StableDiffusion(token=token, model_name="runwayml/stable-diffusion-v1-5", inpainting_model=True)
         else:
             if len(model_name) < 1:
                 model_name = (
@@ -775,7 +775,7 @@ proceed_button_js = load_js("proceed")
 setup_button_js = load_js("setup")
 
 if RUN_IN_SPACE:
-    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING_IMG2IMG)
+    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING_IMG2IMG.value)
 
 blocks = gr.Blocks(
     title="StableDiffusion-Infinity",
