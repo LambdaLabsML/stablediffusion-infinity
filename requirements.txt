@@ -3,11 +3,14 @@ imageio==2.19.5
 imageio-ffmpeg==0.4.7
 numpy==1.22.4
 opencv-python-headless==4.6.0.66
-torch==1.12.0+cu113
-torchvision==0.13.0+cu113
+torch==1.12.1+cu113
+torchvision==0.13.1+cu113
 Pillow
 scipy
 scikit-image
-diffusers==0.3.0
+diffusers==0.6.0
 transformers
 ftfy
+fpie
+gradio==3.6
+fpie
