@@ -128,18 +128,11 @@ async def draw_canvas() -> None:
     canvas.draw_selection_box()
     base_lst[0]=canvas
 
-async def draw_canvas_func(event):
-    try:
-        app=parent.document.querySelector("gradio-app")
-        if app.shadowRoot:
-            app=app.shadowRoot
-        width=app.querySelector("#canvas_width input").value
-        height=app.querySelector("#canvas_height input").value
-        selection_size=app.querySelector("#selection_size input").value
-    except:
-        width=1500
-        height=600
-        selection_size=256
+async def draw_canvas_func():
+
+    width=1500
+    height=600
+    selection_size=256
     document.querySelector("#container").style.width = f"{width}px"
     document.querySelector("#container").style.height= f"{height}px"
     canvas=InfCanvas(int(width),int(height),selection_size=int(selection_size))
