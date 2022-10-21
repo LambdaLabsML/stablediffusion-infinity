@@ -1,4 +1,4 @@
-function(a){
+var setup_outpaint=function(){
     if(!window.my_observe_outpaint)
     {
         console.log("setup outpaint here");
@@ -19,5 +19,13 @@ function(a){
             characterData: true
         });
     }
-    return a;
-}
+}; 
+window.config_obj={
+    resize_check: true,
+    enable_safety: true,
+    use_correction: false,
+    enable_img2img: false,
+    use_seed: false,
+    seed_val: 0,
+};
+setup_outpaint();

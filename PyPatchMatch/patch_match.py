@@ -14,14 +14,13 @@ from typing import Optional, Union
 import numpy as np
 from PIL import Image
 
-try:
-    # If the Jacinle library (https://github.com/vacancy/Jacinle) is present, use its auto_travis feature.
-    from jacinle.jit.cext import auto_travis
-    auto_travis(__file__, required_files=['*.so'])
-except ImportError as e:
+
+import os
+if os.name!="nt":
     # Otherwise, fall back to the subprocess.
     import subprocess
     print('Compiling and loading c extensions from "{}".'.format(osp.realpath(osp.dirname(__file__))))
+    # subprocess.check_call(['./travis.sh'], cwd=osp.dirname(__file__))
     subprocess.check_call("make clean && make", cwd=osp.dirname(__file__), shell=True)
 
 
@@ -43,8 +42,71 @@ class CMatT(ctypes.Structure):
         ('dtype', ctypes.c_int)
     ]
 
+import tempfile
+from urllib.request import urlopen, Request
+import shutil
+from pathlib import Path
+from tqdm import tqdm
 
-PMLIB = ctypes.CDLL(osp.join(osp.dirname(__file__), 'libpatchmatch.so'))
+def download_url_to_file(url, dst, hash_prefix=None, progress=True):
+    r"""Download object at the given URL to a local path.
+
+    Args:
+        url (string): URL of the object to download
+        dst (string): Full path where object will be saved, e.g. ``/tmp/temporary_file``
+        hash_prefix (string, optional): If not None, the SHA256 downloaded file should start with ``hash_prefix``.
+            Default: None
+        progress (bool, optional): whether or not to display a progress bar to stderr
+            Default: True
+    https://pytorch.org/docs/stable/_modules/torch/hub.html#load_state_dict_from_url
+    """
+    file_size = None
+    req = Request(url)
+    u = urlopen(req)
+    meta = u.info()
+    if hasattr(meta, 'getheaders'):
+        content_length = meta.getheaders("Content-Length")
+    else:
+        content_length = meta.get_all("Content-Length")
+    if content_length is not None and len(content_length) > 0:
+        file_size = int(content_length[0])
+
+    # We deliberately save it in a temp file and move it after
+    # download is complete. This prevents a local working checkpoint
+    # being overridden by a broken download.
+    dst = os.path.expanduser(dst)
+    dst_dir = os.path.dirname(dst)
+    f = tempfile.NamedTemporaryFile(delete=False, dir=dst_dir)
+
+    try:
+        with tqdm(total=file_size, disable=not progress,
+                  unit='B', unit_scale=True, unit_divisor=1024) as pbar:
+            while True:
+                buffer = u.read(8192)
+                if len(buffer) == 0:
+                    break
+                f.write(buffer)
+                pbar.update(len(buffer))
+
+        f.close()
+        shutil.move(f.name, dst)
+    finally:
+        f.close()
+        if os.path.exists(f.name):
+            os.remove(f.name)
+
+if os.name!="nt":
+    PMLIB = ctypes.CDLL(osp.join(osp.dirname(__file__), 'libpatchmatch.so'))
+else:
+    if not os.path.exists(osp.join(osp.dirname(__file__), 'libpatchmatch.dll')):
+        download_url_to_file(url="https://github.com/lkwq007/PyPatchMatch/releases/download/v0.1/libpatchmatch.dll",dst=osp.join(osp.dirname(__file__), 'libpatchmatch.dll'))
+    if not os.path.exists(osp.join(osp.dirname(__file__), 'opencv_world460.dll')):
+        download_url_to_file(url="https://github.com/lkwq007/PyPatchMatch/releases/download/v0.1/opencv_world460.dll",dst=osp.join(osp.dirname(__file__), 'opencv_world460.dll'))
+    if not os.path.exists(osp.join(osp.dirname(__file__), 'libpatchmatch.dll')):
+        print("[Dependency Missing] Please download https://github.com/lkwq007/PyPatchMatch/releases/download/v0.1/libpatchmatch.dll and put it into the PyPatchMatch folder")
+    if not os.path.exists(osp.join(osp.dirname(__file__), 'opencv_world460.dll')):
+        print("[Dependency Missing] Please download https://github.com/lkwq007/PyPatchMatch/releases/download/v0.1/opencv_world460.dll and put it into the PyPatchMatch folder")
+    PMLIB = ctypes.CDLL(osp.join(osp.dirname(__file__), 'libpatchmatch.dll'))
 
 PMLIB.PM_set_random_seed.argtypes = [ctypes.c_uint]
 PMLIB.PM_set_verbose.argtypes = [ctypes.c_int]
