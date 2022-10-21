@@ -362,6 +362,8 @@ class StableDiffusionInpaint:
         process_height = height
         if resize_check:
             process_width, process_height = my_resize(width, height)
+        process_width=process_width*8//8
+        process_height=process_height*8//8
         extra_kwargs = {
             "num_inference_steps": step,
             "guidance_scale": guidance_scale,
@@ -771,7 +773,7 @@ proceed_button_js = load_js("proceed")
 setup_button_js = load_js("setup")
 
 if RUN_IN_SPACE:
-    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING_IMG2IMG.value)
+    get_model(token=os.environ.get("hftoken", ""), model_choice=ModelChoice.INPAINTING.value)
 
 blocks = gr.Blocks(
     title="StableDiffusion-Infinity",
