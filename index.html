@@ -3,12 +3,21 @@
 <title>Stablediffusion Infinity</title>
 <meta charset="utf-8">
 <link rel="icon" type="image/x-icon" href="./favicon.png">
+
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/gh/lkwq007/stablediffusion-infinity@master/css/w2ui.min.css">
+<script type="text/javascript" src="https://cdn.jsdelivr.net/gh/lkwq007/stablediffusion-infinity@master/js/w2ui.min.js"></script>
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/gh/lkwq007/stablediffusion-infinity@master/js/fabric.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/gh/lkwq007/stablediffusion-infinity@master/js/toolbar.js"></script>
+
 <link rel="stylesheet" href="https://pyscript.net/alpha/pyscript.css" />
 <script defer src="https://pyscript.net/alpha/pyscript.js"></script>
+
 <style>
 #container {
   position: relative;
   margin:auto;
+  display: block;
 }
 #container > canvas {
   position: absolute;
@@ -30,8 +39,9 @@
 <button type="button" class="control" id="transfer">Transfer</button>
 <button type="button" class="control" id="upload">Upload</button>
 <button type="button" class="control" id="draw">Draw</button>
-<input type="text" id="mode" value="✥" class="control">
+<input type="text" id="mode" value="selection" class="control">
 <input type="text" id="setup" value="0" class="control">
+<input type="text" id="upload_content" value="0" class="control">
 <textarea rows="1" id="selbuffer" name="selbuffer" class="control"></textarea>
 <fieldset class="control">
     <div>
@@ -48,13 +58,21 @@
     </div>
 </fieldset>
 </div>
-<div>
+<div id = "outer_container">
 <div id = "container">
   <canvas id = "canvas0"></canvas>
   <canvas id = "canvas1"></canvas>
   <canvas id = "canvas2"></canvas>
   <canvas id = "canvas3"></canvas>
   <canvas id = "canvas4"></canvas>
+  <div id="overlay_container" style="pointer-events: none">
+    <canvas id = "overlay_canvas" width="1" height="1"></canvas>
+  </div>
+</div>
+<input type="file" name="file" id="upload_file" accept="image/*" hidden>
+<input type="file" name="state" id="upload_state" accept=".sdinf" hidden>
+<div style="position: relative;">
+<div id="toolbar" style></div>
 </div>
 </div>
 <py-env>
@@ -80,7 +98,15 @@ from js import (
     Uint8ClampedArray,
     CanvasRenderingContext2D as Context2d,
     requestAnimationFrame,
-    window
+    window,
+    encodeURIComponent,
+    w2ui,
+    update_eraser,
+    update_scale,
+    adjust_selection,
+    update_count,
+    enable_result_lst,
+    setup_shortcut,
 )
 
 
@@ -90,9 +116,11 @@ from canvas import InfCanvas
 
 base_lst = [None]
 async def draw_canvas() -> None:
-    width=1500
+    width=1024
     height=600
-    canvas=InfCanvas(1500,600)
+    canvas=InfCanvas(1024,600)
+    update_eraser(canvas.eraser_size,min(canvas.selection_size_h,canvas.selection_size_w))
+    document.querySelector("#container").style.height= f"{height}px"
     document.querySelector("#container").style.width = f"{width}px"
     canvas.setup_mouse()
     canvas.clear_background()
@@ -102,14 +130,18 @@ async def draw_canvas() -> None:
 
 async def draw_canvas_func(event):
     try:
-        width=parent.document.querySelector("gradio-app").querySelector("#canvas_width input").value
-        height=parent.document.querySelector("gradio-app").querySelector("#canvas_height input").value
-        selection_size=parent.document.querySelector("gradio-app").querySelector("#selection_size input").value
+        app=parent.document.querySelector("gradio-app")
+        if app.shadowRoot:
+            app=app.shadowRoot
+        width=app.querySelector("#canvas_width input").value
+        height=app.querySelector("#canvas_height input").value
+        selection_size=app.querySelector("#selection_size input").value
     except:
         width=1024
         height=768
         selection_size=384
     document.querySelector("#container").style.width = f"{width}px"
+    document.querySelector("#container").style.height= f"{height}px"
     canvas=InfCanvas(int(width),int(height),selection_size=int(selection_size))
     canvas.setup_mouse()
     canvas.clear_background()
@@ -120,57 +152,95 @@ async def draw_canvas_func(event):
 async def export_func(event):
     base=base_lst[0]
     arr=base.export()
+    base.draw_buffer()
+    base.canvas[2].clear()
     base64_str = base.numpy_to_base64(arr)
     time_str = time.strftime("%Y%m%d_%H%M%S")
-    console.log(f"Canvas saved to outpaint_{time_str}.png")
     link = document.createElement("a")
-    link.download = f"outpaint_{time_str}.png"
+    if len(event.data)>2 and event.data[2]:
+        filename = event.data[2]
+    else:
+        filename = f"outpaint_{time_str}"
+    # link.download = f"sdinf_state_{time_str}.json"
+    link.download = f"{filename}.png"
+    # link.download = f"outpaint_{time_str}.png"
     link.href = "data:image/png;base64,"+base64_str
     link.click()
+    console.log(f"Canvas saved to {filename}.png")
+
+img_candidate_lst=[None,0]
 
 async def outpaint_func(event):
     base=base_lst[0]
-    base64_str=event.data[1]
-    arr=base.base64_to_numpy(base64_str)
+    if len(event.data)==2:
+        app=parent.document.querySelector("gradio-app")
+        if app.shadowRoot:
+            app=app.shadowRoot
+        base64_str_raw=app.querySelector("#output textarea").value
+        base64_str_lst=base64_str_raw.split(",")
+        img_candidate_lst[0]=base64_str_lst
+        img_candidate_lst[1]=0
+    elif event.data[2]=="next":
+        img_candidate_lst[1]+=1
+    elif event.data[2]=="prev":
+        img_candidate_lst[1]-=1
+    enable_result_lst()
+    if img_candidate_lst[0] is None:
+        return
+    lst=img_candidate_lst[0]
+    idx=img_candidate_lst[1]
+    update_count(idx%len(lst)+1,len(lst))
+    arr=base.base64_to_numpy(lst[idx%len(lst)])
     base.fill_selection(arr)
     base.draw_selection_box()
 
 async def undo_func(event):
     base=base_lst[0]
+    img_candidate_lst[0]=None
     if base.sel_dirty:
-        base.canvas[2].clear()
-        base.sel_buffer = base.sel_buffer_bak.copy()
+        base.sel_buffer = np.zeros((base.selection_size_h, base.selection_size_w, 4), dtype=np.uint8)
         base.sel_dirty = False
+    base.canvas[2].clear()
 
 async def commit_func(event):
     base=base_lst[0]
+    img_candidate_lst[0]=None
     if base.sel_dirty:
         base.write_selection_to_buffer()
+        base.draw_buffer()
+    base.canvas[2].clear()
 
 async def transfer_func(event):
     base=base_lst[0]
     base.read_selection_from_buffer()
     sel_buffer=base.sel_buffer
     sel_buffer_str=base.numpy_to_base64(sel_buffer)
-    parent.postMessage(to_js(["transfer",str(sel_buffer_str)]),"*")
+    app=parent.document.querySelector("gradio-app")
+    if app.shadowRoot:
+        app=app.shadowRoot
+    app.querySelector("#input textarea").value=sel_buffer_str
+    app.querySelector("#proceed").click()
 
 async def upload_func(event):
     base=base_lst[0]
-    base64_str=event.data[1]
+    # base64_str=event.data[1]
+    base64_str=document.querySelector("#upload_content").value
+    base64_str=base64_str.split(",")[-1]
+    # base64_str=parent.document.querySelector("gradio-app").shadowRoot.querySelector("#upload textarea").value
     arr=base.base64_to_numpy(base64_str)
-    h,w,_=arr.shape
-    yo=(base.height-h)//2
-    xo=(base.width-w)//2
-    if base.sel_dirty:
-        base.canvas[2].clear()
-        base.sel_buffer = base.sel_buffer_bak.copy()
-        base.sel_dirty = False
+    h,w,c=base.buffer.shape
+    base.sync_to_buffer()
     base.buffer_dirty=True
-    base.buffer*=0
-    base.buffer[yo:yo+h,xo:xo+w,0:3]=arr[:,:,0:3]
-    base.buffer[yo:yo+h,xo:xo+w,-1]=arr[:,:,-1]
+    mask=arr[:,:,3:4].repeat(4,axis=2)
+    base.buffer[mask>0]=0
+    # in case mismatch
+    base.buffer[0:h,0:w,:]+=arr
+    #base.buffer[yo:yo+h,xo:xo+w,0:3]=arr[:,:,0:3]
+    #base.buffer[yo:yo+h,xo:xo+w,-1]=arr[:,:,-1]
     base.draw_buffer()
 
+async def setup_shortcut_func(event):
+    setup_shortcut(event.data[1])
   
 
 document.querySelector("#export").addEventListener("click",create_proxy(export_func))
@@ -185,28 +255,155 @@ document.querySelector("#draw").addEventListener("click",create_proxy(draw_canva
 async def setup_func():
     document.querySelector("#setup").value="1"
 
+async def reset_func(event):
+    base=base_lst[0]
+    base.reset()
+    
+async def load_func(event):
+    base=base_lst[0]
+    base.load(event.data[1])
+
+async def save_func(event):
+    base=base_lst[0]
+    json_str=base.save()
+    time_str = time.strftime("%Y%m%d_%H%M%S")
+    link = document.createElement("a")
+    if len(event.data)>2 and event.data[2]:
+        filename = str(event.data[2]).strip()
+    else:
+        filename = f"outpaint_{time_str}"
+    # link.download = f"sdinf_state_{time_str}.json"
+    link.download = f"{filename}.sdinf"
+    link.href = "data:text/json;charset=utf-8,"+encodeURIComponent(json_str)
+    link.click()
+
+async def prev_result_func(event):
+    base=base_lst[0]
+    base.reset()
+
+async def next_result_func(event):
+    base=base_lst[0]
+    base.reset()
+
+async def zoom_in_func(event):
+    base=base_lst[0]
+    scale=base.scale
+    if scale>=0.2:
+        scale-=0.1
+        if len(event.data)>2:
+            base.update_scale(scale,int(event.data[2]),int(event.data[3]))
+        else:
+            base.update_scale(scale)
+        scale=base.scale
+        update_scale(f"{base.width}x{base.height} ({round(100/scale)}%)")
+
+async def zoom_out_func(event):
+    base=base_lst[0]
+    scale=base.scale
+    if scale<10:
+        scale+=0.1
+        console.log(len(event.data))
+        if len(event.data)>2:
+            base.update_scale(scale,int(event.data[2]),int(event.data[3]))
+        else:
+            base.update_scale(scale)
+        scale=base.scale
+        update_scale(f"{base.width}x{base.height} ({round(100/scale)}%)")
+
+async def sync_func(event):
+    base=base_lst[0]
+    base.sync_to_buffer()
+    base.canvas[2].clear()
+
+async def eraser_size_func(event):
+    base=base_lst[0]
+    eraser_size=min(int(event.data[1]),min(base.selection_size_h,base.selection_size_w))
+    eraser_size=max(8,eraser_size)
+    base.eraser_size=eraser_size
+
+async def resize_selection_func(event):
+    base=base_lst[0]
+    cursor=base.cursor
+    if len(event.data)>3:
+        console.log(event.data)
+        base.cursor[0]=int(event.data[1])
+        base.cursor[1]=int(event.data[2])
+        base.selection_size_w=int(event.data[3])//8*8
+        base.selection_size_h=int(event.data[4])//8*8
+        base.refine_selection()
+        base.draw_selection_box()
+    elif len(event.data)>2:
+        base.draw_selection_box()
+    else:
+        base.canvas[-1].clear()
+        adjust_selection(cursor[0],cursor[1],base.selection_size_w,base.selection_size_h)
+
+async def eraser_func(event):
+    base=base_lst[0]
+    if event.data[1]!="eraser":
+        base.canvas[-2].clear()
+    else:
+        x,y=base.mouse_pos
+        base.draw_eraser(x,y)
+
+async def resize_func(event):
+    base=base_lst[0]
+    width=int(event.data[1])
+    height=int(event.data[2])
+    if width>=256 and height>=256:
+        if max(base.selection_size_h,base.selection_size_w)>min(width,height):
+            base.selection_size_h=256
+            base.selection_size_w=256
+        base.resize(width,height)
+
 async def message_func(event):
     if event.data[0]=="click":
-        if event.data[1]=="export":
+        if event.data[1]=="clear":
+            await reset_func(event)
+        elif event.data[1]=="save":
+            await save_func(event)
+        elif event.data[1]=="export":
             await export_func(event)
-        elif event.data[1]=="commit":
+        elif event.data[1]=="accept":
             await commit_func(event)
-        elif event.data[1]=="undo":
+        elif event.data[1]=="cancel":
             await undo_func(event)
+        elif event.data[1]=="zoom_in":
+            await zoom_in_func(event)
+        elif event.data[1]=="zoom_out":
+            await zoom_out_func(event)
+    elif event.data[0]=="sync":
+        await sync_func(event)
+    elif event.data[0]=="load":
+        await load_func(event)
     elif event.data[0]=="upload":
         await upload_func(event)
     elif event.data[0]=="outpaint":
         await outpaint_func(event)
     elif event.data[0]=="mode":
+        if event.data[1]!="selection":
+            await sync_func(event)
+        await eraser_func(event)
         document.querySelector("#mode").value=event.data[1]
     elif event.data[0]=="transfer":
         await transfer_func(event)
+    elif event.data[0]=="setup":
+        await draw_canvas_func(event)
+    elif event.data[0]=="eraser_size":
+        await eraser_size_func(event)
+    elif event.data[0]=="resize_selection":
+        await resize_selection_func(event)
+    elif event.data[0]=="shortcut":
+        await setup_shortcut_func(event)
+    elif event.data[0]=="resize":
+        await resize_func(event)
     
 window.addEventListener("message",create_proxy(message_func))
+
 import asyncio
 
 _ = await asyncio.gather(
-  setup_func(),draw_canvas()
+  setup_func()
 )
 </py-script>
 

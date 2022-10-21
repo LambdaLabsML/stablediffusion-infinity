@@ -10,16 +10,19 @@ import os
 from perlin2d import *
 
 patch_match_compiled = True
-if os.name != "nt":
+
+try:
+    from PyPatchMatch import patch_match
+except Exception as e:
     try:
-        from PyPatchMatch import patch_match
-    except Exception as e:
         import patch_match
+    except Exception as e:
+        patch_match_compiled = False
 
 try:
     patch_match
 except NameError:
-    print("patch_match compiling failed")
+    print("patch_match compiling failed, will fall back to edge_pad")
     patch_match_compiled = False
 
 
@@ -139,13 +142,122 @@ def mean_fill(img, mask):
     img[mask < 1] = avg
     return img, mask
 
+"""
+Apache-2.0 license
+https://github.com/hafriedlander/stable-diffusion-grpcserver/blob/main/sdgrpcserver/services/generate.py
+https://github.com/parlance-zz/g-diffuser-bot/tree/g-diffuser-bot-beta2
+_handleImageAdjustment
+"""
+if True:
+    from sd_grpcserver.sdgrpcserver import images
+    import torch
+    from math import sqrt
+    def handleImageAdjustment(array, adjustments):
+        tensor = images.fromPIL(Image.fromarray(array))
+        for adjustment in adjustments:
+            which = adjustment[0]
 
+            if which == "blur":
+                sigma = adjustment[1]
+                direction = adjustment[2]
+
+                if direction == "DOWN" or direction == "UP":
+                    orig = tensor
+                    repeatCount=256
+                    sigma /= sqrt(repeatCount)
+
+                    for _ in range(repeatCount):
+                        tensor = images.gaussianblur(tensor, sigma)
+                        if direction == "DOWN":
+                            tensor = torch.minimum(tensor, orig)
+                        else:
+                            tensor = torch.maximum(tensor, orig)
+                else:
+                    tensor = images.gaussianblur(tensor, adjustment.blur.sigma)
+            elif which == "invert":
+                tensor = images.invert(tensor)
+            elif which == "levels":
+                tensor = images.levels(tensor, adjustment[1], adjustment[2], adjustment[3], adjustment[4])
+            elif which == "channels":
+                tensor = images.channelmap(tensor, [adjustment.channels.r,  adjustment.channels.g,  adjustment.channels.b,  adjustment.channels.a])
+            elif which == "rescale":
+                self.unimp("Rescale")
+            elif which == "crop":
+                tensor = images.crop(tensor, adjustment.crop.top, adjustment.crop.left, adjustment.crop.height, adjustment.crop.width)
+        return np.array(images.toPIL(tensor)[0])
+
+def g_diffuser(img,mask):
+    adjustments=[["blur",32,"UP"],["level",0,0.05,0,1]]
+    mask=handleImageAdjustment(mask,adjustments)
+    out_mask=handleImageAdjustment(mask,adjustments)
+    return img, mask, out_mask
+def dummy_fill(img,mask):
+    return img,mask
 functbl = {
     "gaussian": gaussian_noise,
     "perlin": perlin_noise,
     "edge_pad": edge_pad,
-    "patchmatch": patch_match_func if (os.name != "nt" and patch_match_compiled) else edge_pad,
+    "patchmatch": patch_match_func if patch_match_compiled else edge_pad,
     "cv2_ns": cv2_ns,
     "cv2_telea": cv2_telea,
-    "mean_fill": mean_fill,
+    "g_diffuser": g_diffuser,
+    "g_diffuser_lib": dummy_fill,
 }
+
+try:
+    from postprocess import PhotometricCorrection
+    correction_func = PhotometricCorrection()
+except Exception as e:
+    print(e, "so PhotometricCorrection is disabled")
+    class DummyCorrection:
+        def __init__(self):
+            self.backend=""
+            pass
+        def run(self,a,b,**kwargs):
+            return b
+    correction_func=DummyCorrection()
+
+if "taichi" in correction_func.backend:
+    import sys
+    import io
+    import base64
+    from PIL import Image
+    def base64_to_pil(base64_str):
+        data = base64.b64decode(str(base64_str))
+        pil = Image.open(io.BytesIO(data))
+        return pil
+
+    def pil_to_base64(out_pil):
+        out_buffer = io.BytesIO()
+        out_pil.save(out_buffer, format="PNG")
+        out_buffer.seek(0)
+        base64_bytes = base64.b64encode(out_buffer.read())
+        base64_str = base64_bytes.decode("ascii")
+        return base64_str
+    from subprocess import Popen, PIPE, STDOUT
+    class SubprocessCorrection:
+        def __init__(self):
+            self.backend=correction_func.backend
+            self.child= Popen(["python", "postprocess.py"], stdin=PIPE, stdout=PIPE, stderr=STDOUT)
+        def run(self,img_input,img_inpainted,mode):
+            if mode=="disabled":
+                return img_inpainted
+            base64_str_input = pil_to_base64(img_input)
+            base64_str_inpainted = pil_to_base64(img_inpainted)
+            try:
+                if self.child.poll():
+                    self.child= Popen(["python", "postprocess.py"], stdin=PIPE, stdout=PIPE, stderr=STDOUT)
+                self.child.stdin.write(f"{base64_str_input},{base64_str_inpainted},{mode}\n".encode())
+                self.child.stdin.flush()
+                out = self.child.stdout.readline()
+                base64_str=out.decode().strip()
+                while base64_str and base64_str[0]=="[":
+                    print(base64_str)
+                    out = self.child.stdout.readline()
+                    base64_str=out.decode().strip()
+                ret=base64_to_pil(base64_str)
+            except:
+                print("[PIE] not working, photometric correction is disabled")
+                ret=img_inpainted
+            return ret
+    correction_func = SubprocessCorrection()

@@ -1,8 +1,10 @@
 import base64
+import json
 import io
 import numpy as np
 from PIL import Image
 from pyodide import to_js, create_proxy
+import gc
 from js import (
     console,
     document,
@@ -11,11 +13,14 @@ from js import (
     Uint8ClampedArray,
     CanvasRenderingContext2D as Context2d,
     requestAnimationFrame,
+    update_overlay,
+    setup_overlay,
+    window
 )
 
-PAINT_SELECTION = "✥"
-IMAGE_SELECTION = "🖼️"
-BRUSH_SELECTION = "🖌️"
+PAINT_SELECTION = "selection"
+IMAGE_SELECTION = "canvas"
+BRUSH_SELECTION = "eraser"
 NOP_MODE = 0
 PAINT_MODE = 1
 IMAGE_MODE = 2
@@ -62,7 +67,7 @@ class CanvasProxy:
         self.ctx.clearRect(x, y, w, h)
 
     def clear(self,):
-        self.clear_rect(0, 0, self.width, self.height)
+        self.clear_rect(0, 0, self.canvas.width, self.canvas.height)
 
     def stroke_rect(self, x, y, w, h):
         self.ctx.strokeRect(x, y, w, h)
@@ -75,6 +80,12 @@ class CanvasProxy:
         height, width, _ = image.shape
         image_data = ImageData.new(data, width, height)
         self.ctx.putImageData(image_data, x, y)
+        del image_data
+
+    # def draw_image(self,canvas, x, y, w, h):
+    #     self.ctx.drawImage(canvas,x,y,w,h)
+    def draw_image(self,canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight):
+        self.ctx.drawImage(canvas, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
 
     @property
     def stroke_style(self):
@@ -100,23 +111,27 @@ class InfCanvas:
         width,
         height,
         selection_size=256,
-        grid_size=32,
+        grid_size=64,
         patch_size=4096,
         test_mode=False,
     ) -> None:
         assert selection_size < min(height, width)
         self.width = width
         self.height = height
+        self.display_width = width
+        self.display_height = height
         self.canvas = multi_canvas(5, width=width, height=height)
-        # self.canvas = Canvas(width=width, height=height)
-        self.view_pos = [0, 0]
+        setup_overlay(width,height)
+        # place at center
+        self.view_pos = [patch_size//2-width//2, patch_size//2-height//2]
         self.cursor = [
             width // 2 - selection_size // 2,
             height // 2 - selection_size // 2,
         ]
         self.data = {}
         self.grid_size = grid_size
-        self.selection_size = selection_size
+        self.selection_size_w = selection_size
+        self.selection_size_h = selection_size
         self.patch_size = patch_size
         # note that for image data, the height comes before width
         self.buffer = np.zeros((height, width, 4), dtype=np.uint8)
@@ -133,7 +148,36 @@ class InfCanvas:
         self.buffer_updated = False
         self.image_move_freq = 1
         self.show_brush = False
-        # inpaint pipeline from diffuser
+        self.scale=1.0
+        self.eraser_size=32
+
+    def reset_large_buffer(self):
+        self.canvas[2].canvas.width=self.width
+        self.canvas[2].canvas.height=self.height
+        # self.canvas[2].canvas.style.width=f"{self.display_width}px"
+        # self.canvas[2].canvas.style.height=f"{self.display_height}px"
+        self.canvas[2].canvas.style.display="block"
+        self.canvas[2].clear()
+
+    def draw_eraser(self, x, y):
+        self.canvas[-2].clear()
+        self.canvas[-2].fill_style = "#ffffff"
+        self.canvas[-2].fill_rect(x-self.eraser_size//2,y-self.eraser_size//2,self.eraser_size,self.eraser_size)
+        self.canvas[-2].stroke_rect(x-self.eraser_size//2,y-self.eraser_size//2,self.eraser_size,self.eraser_size)
+
+    def use_eraser(self,x,y):
+        if self.sel_dirty:
+            self.write_selection_to_buffer()
+            self.draw_buffer()
+            self.canvas[2].clear()
+        self.buffer_dirty=True
+        bx0,by0=int(x)-self.eraser_size//2,int(y)-self.eraser_size//2
+        bx1,by1=bx0+self.eraser_size,by0+self.eraser_size
+        bx0,by0=max(0,bx0),max(0,by0)
+        bx1,by1=min(self.width,bx1),min(self.height,by1)
+        self.buffer[by0:by1,bx0:bx1,:]*=0
+        self.draw_buffer()
+        self.draw_selection_box()
 
     def setup_mouse(self):
         self.image_move_cnt = 0
@@ -155,17 +199,22 @@ class InfCanvas:
 
         def handle_mouse_down(event):
             self.mouse_state = get_mouse_mode()
+            if self.mouse_state==BRUSH_MODE:
+                x,y=get_event_pos(event)
+                self.use_eraser(x,y)
 
         def handle_mouse_out(event):
             last_state = self.mouse_state
             self.mouse_state = NOP_MODE
             self.image_move_cnt = 0
             if last_state == IMAGE_MODE:
+                self.update_view_pos(0, 0)
                 if True:
                     self.clear_background()
                     self.draw_buffer()
-                    self.canvas[2].clear()
+                    self.reset_large_buffer()
                     self.draw_selection_box()
+                gc.collect()
             if self.show_brush:
                 self.canvas[-2].clear()
                 self.show_brush = False
@@ -175,11 +224,13 @@ class InfCanvas:
             self.mouse_state = NOP_MODE
             self.image_move_cnt = 0
             if last_state == IMAGE_MODE:
+                self.update_view_pos(0, 0)
                 if True:
                     self.clear_background()
                     self.draw_buffer()
-                    self.canvas[2].clear()
+                    self.reset_large_buffer()
                     self.draw_selection_box()
+                gc.collect()
 
         async def handle_mouse_move(event):
             x, y = get_event_pos(event)
@@ -197,33 +248,35 @@ class InfCanvas:
                     self.draw_selection_box()
             elif self.mouse_state == IMAGE_MODE:
                 self.image_move_cnt += 1
-                self.update_view_pos(int(xo), int(yo))
                 if self.image_move_cnt == self.image_move_freq:
-                    if True:
-                        self.clear_background()
-                        self.draw_buffer()
-                        self.canvas[2].clear()
-                        self.draw_selection_box()
-                    self.image_move_cnt = 0
-            elif self.mouse_state == BRUSH_MODE:
-                if self.sel_dirty:
-                    self.write_selection_to_buffer()
+                    self.draw_buffer()
                     self.canvas[2].clear()
-                self.buffer_dirty=True
-                bx0,by0=int(x)-self.grid_size//2,int(y)-self.grid_size//2
-                bx1,by1=bx0+self.grid_size,by0+self.grid_size
-                bx0,by0=max(0,bx0),max(0,by0)
-                bx1,by1=min(self.width,bx1),min(self.height,by1)
-                self.buffer[by0:by1,bx0:bx1,:]*=0
-                self.draw_buffer()
-                self.draw_selection_box()
+                    self.draw_selection_box()
+                    self.update_view_pos(int(xo), int(yo))
+                    self.cached_view_pos=tuple(self.view_pos)
+                    self.canvas[2].canvas.style.display="none"
+                    large_buffer=self.data2array(self.view_pos[0]-self.width//2,self.view_pos[1]-self.height//2,min(self.width*2,self.patch_size*2),min(self.height*2,self.patch_size*2))
+                    self.canvas[2].canvas.width=2*self.width
+                    self.canvas[2].canvas.height=2*self.height
+                    # self.canvas[2].canvas.style.width=""
+                    # self.canvas[2].canvas.style.height=""
+                    self.canvas[2].put_image_data(large_buffer,0,0)
+                else:
+                    self.update_view_pos(int(xo), int(yo), False)
+                    self.canvas[1].clear()
+                    self.canvas[1].draw_image(self.canvas[2].canvas,
+                    self.width//2+(self.view_pos[0]-self.cached_view_pos[0]),self.height//2+(self.view_pos[1]-self.cached_view_pos[1]),
+                    self.width,self.height,
+                    0,0,self.width,self.height
+                    )
+                self.clear_background()
+                    # self.image_move_cnt = 0
+            elif self.mouse_state == BRUSH_MODE:
+                self.use_eraser(x,y)
 
             mode = document.querySelector("#mode").value
             if mode == BRUSH_SELECTION:
-                self.canvas[-2].clear()
-                self.canvas[-2].fill_style = "#ffffff"
-                self.canvas[-2].fill_rect(x-self.grid_size//2,y-self.grid_size//2,self.grid_size,self.grid_size)
-                self.canvas[-2].stroke_rect(x-self.grid_size//2,y-self.grid_size//2,self.grid_size,self.grid_size)
+                self.draw_eraser(x,y)
                 self.show_brush = True
             elif self.show_brush:
                 self.canvas[-2].clear()
@@ -243,109 +296,19 @@ class InfCanvas:
         self.canvas[-1].canvas.addEventListener(
             "mouseout", create_proxy(handle_mouse_out)
         )
-
-    def setup_widgets(self):
-        self.mode_button = widgets.ToggleButtons(
-            options=[PAINT_SELECTION, IMAGE_SELECTION],
-            disabled=False,
-            button_style="",
-            style={"button_width": "50px", "font_weight": "bold"},
-            tooltips=["Outpaint region", "Image"],
+        async def handle_mouse_wheel(event):
+            x, y = get_event_pos(event)
+            self.mouse_pos[0] = x
+            self.mouse_pos[1] = y
+            console.log(to_js(self.mouse_pos))
+            if event.deltaY>10:
+                window.postMessage(to_js(["click","zoom_out", self.mouse_pos[0], self.mouse_pos[1]]),"*")
+            elif event.deltaY<-10:
+                window.postMessage(to_js(["click","zoom_in", self.mouse_pos[0], self.mouse_pos[1]]),"*")
+            return False
+        self.canvas[-1].canvas.addEventListener(
+            "wheel", create_proxy(handle_mouse_wheel), False
         )
-        self.test_button = widgets.ToggleButtons(
-            options=["r", "g", "b"],
-            disabled=False,
-            style={"button_width": "50px", "font_weight": "bold", "font_size": "36px"},
-        )
-        self.text_input = widgets.Textarea(
-            value="",
-            placeholder="input your prompt here",
-            description="Prompt:",
-            disabled=False,
-        )
-        self.run_button = widgets.Button(
-            description="Outpaint",
-            tooltip="Run outpainting",
-            icon="pen",
-            button_style="primary",
-        )
-        self.export_button = widgets.Button(
-            description="Export",
-            tooltip="Export the image",
-            icon="save",
-            button_style="success",
-        )
-        self.fill_button = widgets.ToggleButtons(
-            description="Init mode:",
-            options=[
-                "patchmatch",
-                "edge_pad",
-                "cv2_ns",
-                "cv2_telea",
-                "gaussian",
-                "perlin",
-            ],
-            disabled=False,
-            button_style="",
-            style={"button_width": "80px", "font_weight": "bold"},
-        )
-
-        if self.test_mode:
-
-            def test_button_clicked(btn):
-                # lst.append(tuple(base.cursor))
-                with self.output:
-                    val = self.test_button.value
-                    if val == "r":
-                        self.fill_selection(
-                            np.tile(
-                                np.array([255, 0, 0, 255], dtype=np.uint8),
-                                (self.selection_size, self.selection_size, 1),
-                            )
-                        )
-                    if val == "g":
-                        self.fill_selection(
-                            np.tile(
-                                np.array([0, 255, 0, 255], dtype=np.uint8),
-                                (self.selection_size, self.selection_size, 1),
-                            )
-                        )
-                    if val == "b":
-                        self.fill_selection(
-                            np.tile(
-                                np.array([0, 0, 255, 255], dtype=np.uint8),
-                                (self.selection_size, self.selection_size, 1),
-                            )
-                        )
-                    if True:
-                        self.clear_background()
-                        self.draw_buffer()
-                        self.draw_selection_box()
-
-            self.run_button.on_click(test_button_clicked)
-
-    def display(self):
-        if True:
-            self.clear_background()
-            self.draw_buffer()
-            self.draw_selection_box()
-        if self.test_mode:
-            return [
-                self.test_button,
-                self.mode_button,
-                self.canvas,
-                widgets.HBox([self.run_button, self.text_input]),
-                self.output,
-            ]
-        return [
-            self.fill_button,
-            self.canvas,
-            widgets.HBox(
-                [self.mode_button, self.run_button, self.export_button, self.text_input]
-            ),
-            self.output,
-        ]
-
     def clear_background(self):
         # fake transparent background
         h, w, step = self.height, self.width, self.grid_size
@@ -353,26 +316,69 @@ class InfCanvas:
         x0, y0 = self.view_pos
         x0 = (-x0) % stride
         y0 = (-y0) % stride
+        if y0>=step:
+            val0,val1=stride,step
+        else:
+            val0,val1=step,stride
         # self.canvas.clear()
         self.canvas[0].fill_style = "#ffffff"
         self.canvas[0].fill_rect(0, 0, w, h)
         self.canvas[0].fill_style = "#aaaaaa"
-        for y in range(y0 - stride, h + step, step):
-            start = (x0 - stride) if y // step % 2 == 0 else (x0 - step)
+        for y in range(y0-stride, h + step, step):
+            start = (x0 - val0) if y // step % 2 == 0 else (x0 - val1)
             for x in range(start, w + step, stride):
                 self.canvas[0].fill_rect(x, y, step, step)
         self.canvas[0].stroke_rect(0, 0, w, h)
 
-    def update_view_pos(self, xo, yo):
-        if abs(xo) + abs(yo) == 0:
+    def refine_selection(self):
+        h,w=self.selection_size_h,self.selection_size_w
+        h=h//8*8
+        w=w//8*8
+        h=min(h,self.height)
+        w=min(w,self.width)
+        self.selection_size_h=h
+        self.selection_size_w=w
+        self.update_cursor(1,0)
+        
+
+    def update_scale(self, scale, mx=-1, my=-1):
+        self.sync_to_data()
+        scaled_width=int(self.display_width*scale)
+        scaled_height=int(self.display_height*scale)
+        if max(scaled_height,scaled_width)>=self.patch_size*2-128:
             return
+        if scaled_height<=self.selection_size_h or scaled_width<=self.selection_size_w:
+            return
+        if mx>=0 and my>=0:
+            scaled_mx=mx/self.scale*scale
+            scaled_my=my/self.scale*scale
+            self.view_pos[0]+=int(mx-scaled_mx)
+            self.view_pos[1]+=int(my-scaled_my)
+        self.scale=scale
+        for item in self.canvas:
+            item.canvas.width=scaled_width
+            item.canvas.height=scaled_height
+            item.clear()
+        update_overlay(scaled_width,scaled_height)
+        self.width=scaled_width
+        self.height=scaled_height
+        self.data2buffer()
+        self.clear_background()
+        self.draw_buffer()
+        self.update_cursor(1,0)
+        self.draw_selection_box()
+
+    def update_view_pos(self, xo, yo, update=True):
+        # if abs(xo) + abs(yo) == 0:
+            # return
         if self.sel_dirty:
             self.write_selection_to_buffer()
         if self.buffer_dirty:
             self.buffer2data()
         self.view_pos[0] -= xo
         self.view_pos[1] -= yo
-        self.data2buffer()
+        if update:
+            self.data2buffer()
         # self.read_selection_from_buffer()
 
     def update_cursor(self, xo, yo):
@@ -382,13 +388,15 @@ class InfCanvas:
             self.write_selection_to_buffer()
         self.cursor[0] += xo
         self.cursor[1] += yo
-        self.cursor[0] = max(min(self.width - self.selection_size, self.cursor[0]), 0)
-        self.cursor[1] = max(min(self.height - self.selection_size, self.cursor[1]), 0)
+        self.cursor[0] = max(min(self.width - self.selection_size_w, self.cursor[0]), 0)
+        self.cursor[1] = max(min(self.height - self.selection_size_h, self.cursor[1]), 0)
         # self.read_selection_from_buffer()
 
     def data2buffer(self):
         x, y = self.view_pos
         h, w = self.height, self.width
+        if h!=self.buffer.shape[0] or w!=self.buffer.shape[1]:
+            self.buffer=np.zeros((self.height, self.width, 4), dtype=np.uint8)
         # fill four parts
         for i in range(4):
             pos_src, pos_dst, data = self.select(x, y, i)
@@ -397,6 +405,20 @@ class InfCanvas:
             xd0, xd1 = pos_dst[0]
             yd0, yd1 = pos_dst[1]
             self.buffer[yd0:yd1, xd0:xd1, :] = data[ys0:ys1, xs0:xs1, :]
+
+    def data2array(self, x, y, w, h):
+        # x, y = self.view_pos
+        # h, w = self.height, self.width
+        ret=np.zeros((h, w, 4), dtype=np.uint8)
+        # fill four parts
+        for i in range(4):
+            pos_src, pos_dst, data = self.select(x, y, i, w, h)
+            xs0, xs1 = pos_src[0]
+            ys0, ys1 = pos_src[1]
+            xd0, xd1 = pos_dst[0]
+            yd0, yd1 = pos_dst[1]
+            ret[yd0:yd1, xd0:xd1, :] = data[ys0:ys1, xs0:xs1, :]
+        return ret
 
     def buffer2data(self):
         x, y = self.view_pos
@@ -411,8 +433,11 @@ class InfCanvas:
             data[ys0:ys1, xs0:xs1, :] = self.buffer[yd0:yd1, xd0:xd1, :]
         self.buffer_dirty = False
 
-    def select(self, x, y, idx):
-        w, h = self.width, self.height
+    def select(self, x, y, idx, width=0, height=0):
+        if width==0:
+            w, h = self.width, self.height
+        else:
+            w, h = width, height
         lst = [(0, 0), (0, h), (w, 0), (w, h)]
         if idx == 0:
             x0, y0 = x % self.patch_size, y % self.patch_size
@@ -458,31 +483,34 @@ class InfCanvas:
 
     def draw_selection_box(self):
         x0, y0 = self.cursor
-        size = self.selection_size
+        w, h = self.selection_size_w, self.selection_size_h
         if self.sel_dirty:
             self.canvas[2].clear()
             self.canvas[2].put_image_data(self.sel_buffer, x0, y0)
         self.canvas[-1].clear()
         self.canvas[-1].stroke_style = "#0a0a0a"
-        self.canvas[-1].stroke_rect(x0, y0, size, size)
+        self.canvas[-1].stroke_rect(x0, y0, w, h)
         self.canvas[-1].stroke_style = "#ffffff"
-        self.canvas[-1].stroke_rect(x0 - 1, y0 - 1, size + 2, size + 2)
+        offset=round(self.scale) if self.scale>1.0 else 1
+        self.canvas[-1].stroke_rect(x0 - offset, y0 - offset, w + offset*2, h + offset*2)
         self.canvas[-1].stroke_style = "#000000"
-        self.canvas[-1].stroke_rect(x0 - 2, y0 - 2, size + 4, size + 4)
+        self.canvas[-1].stroke_rect(x0 - offset*2, y0 - offset*2, w + offset*4, h + offset*4)
 
     def write_selection_to_buffer(self):
         x0, y0 = self.cursor
-        x1, y1 = x0 + self.selection_size, y0 + self.selection_size
+        x1, y1 = x0 + self.selection_size_w, y0 + self.selection_size_h
         self.buffer[y0:y1, x0:x1] = self.sel_buffer
         self.sel_dirty = False
-        self.sel_buffer = self.sel_buffer_bak.copy()
+        self.sel_buffer = np.zeros(
+            (self.selection_size_h, self.selection_size_w, 4), dtype=np.uint8
+        )
         self.buffer_dirty = True
         self.buffer_updated = True
         # self.canvas[2].clear()
 
     def read_selection_from_buffer(self):
         x0, y0 = self.cursor
-        x1, y1 = x0 + self.selection_size, y0 + self.selection_size
+        x1, y1 = x0 + self.selection_size_w, y0 + self.selection_size_h
         self.sel_buffer = self.buffer[y0:y1, x0:x1]
         self.sel_dirty = False
 
@@ -495,7 +523,7 @@ class InfCanvas:
         except:
             ret = np.tile(
                 np.array([255, 0, 0, 255], dtype=np.uint8),
-                (self.selection_size, self.selection_size, 1),
+                (self.selection_size_h, self.selection_size_w, 1),
             )
         return ret
 
@@ -507,16 +535,90 @@ class InfCanvas:
         base64_bytes = base64.b64encode(out_buffer.read())
         base64_str = base64_bytes.decode("ascii")
         return base64_str
-
-    def export(self):
+    
+    def sync_to_data(self):
         if self.sel_dirty:
             self.write_selection_to_buffer()
+            self.canvas[2].clear()
+            self.draw_buffer()
         if self.buffer_dirty:
             self.buffer2data()
+    
+    def sync_to_buffer(self):
+        if self.sel_dirty:
+            self.canvas[2].clear()
+            self.write_selection_to_buffer()
+        self.draw_buffer()
+
+    def resize(self,width,height,scale=None,**kwargs):
+        self.display_width=width
+        self.display_height=height
+        for canvas in self.canvas:
+            prepare_canvas(width=width,height=height,canvas=canvas.canvas)
+        setup_overlay(width,height)
+        if scale is None:
+            scale=1
+        self.update_scale(scale)
+
+
+    def save(self):
+        self.sync_to_data()
+        state={}
+        state["width"]=self.display_width
+        state["height"]=self.display_height
+        state["selection_width"]=self.selection_size_w
+        state["selection_height"]=self.selection_size_h
+        state["view_pos"]=self.view_pos[:]
+        state["cursor"]=self.cursor[:]
+        state["scale"]=self.scale
+        keys=list(self.data.keys())
+        data={}
+        for key in keys:
+            if self.data[key].sum()>0:
+                data[f"{key[0]},{key[1]}"]=self.numpy_to_base64(self.data[key])
+        state["data"]=data
+        return json.dumps(state)
+
+    def load(self, state_json):
+        self.reset()
+        state=json.loads(state_json)
+        self.display_width=state["width"]
+        self.display_height=state["height"]
+        self.selection_size_w=state["selection_width"]
+        self.selection_size_h=state["selection_height"]
+        self.view_pos=state["view_pos"][:]
+        self.cursor=state["cursor"][:]
+        self.scale=state["scale"]
+        self.resize(state["width"],state["height"],scale=state["scale"])
+        for k,v in state["data"].items():
+            key=tuple(map(int,k.split(",")))
+            self.data[key]=self.base64_to_numpy(v)
+        self.data2buffer()
+        self.display()
+
+    def display(self):
+        self.clear_background()
+        self.draw_buffer()
+        self.draw_selection_box()
+
+    def reset(self):
+        self.data.clear()
+        self.buffer*=0
+        self.buffer_dirty=False
+        self.buffer_updated=False
+        self.sel_buffer*=0
+        self.sel_dirty=False
+        self.view_pos = [0, 0]
+        self.clear_background()
+        for i in range(1,len(self.canvas)-1):
+            self.canvas[i].clear()
+
+    def export(self):
+        self.sync_to_data()
         xmin, xmax, ymin, ymax = 0, 0, 0, 0
         if len(self.data.keys()) == 0:
             return np.zeros(
-                (self.selection_size, self.selection_size, 4), dtype=np.uint8
+                (self.selection_size_h, self.selection_size_w, 4), dtype=np.uint8
             )
         for xi, yi in self.data.keys():
             buf = self.data[(xi, yi)]
@@ -544,5 +646,5 @@ class InfCanvas:
             return image
         else:
             return np.zeros(
-                (self.selection_size, self.selection_size, 4), dtype=np.uint8
+                (self.selection_size_h, self.selection_size_w, 4), dtype=np.uint8
             )
