@@ -1004,7 +1004,7 @@ with blocks as demo:
         _js=proceed_button_js,
     )
     # cancel button can also remove error overlay
-    cancel_button.click(fn=None, inputs=None, outputs=None, cancels=[proceed_event])
+    # cancel_button.click(fn=None, inputs=None, outputs=None, cancels=[proceed_event])
 
 
 launch_extra_kwargs = {
