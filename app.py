@@ -911,7 +911,7 @@ with blocks as demo:
                     )
                 with gr.Row():
                     sd_scheduler = gr.Dropdown(
-                        list(scheduler_dict.keys()), label="Scheduler", value="PLMS"
+                        list(scheduler_dict.keys()), label="Scheduler", value="DPM"
                     )
                     sd_scheduler_eta = gr.Number(label="Eta", value=0.0)
         with gr.Column(scale=1, min_width=80):
