@@ -8,7 +8,8 @@ torchvision==0.13.1+cu113
 Pillow
 scipy
 scikit-image
-diffusers==0.6.0
+diffusers==0.9.0
 transformers
 ftfy
 fpie
+accelerate

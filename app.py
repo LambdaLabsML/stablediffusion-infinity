@@ -15,6 +15,8 @@ from diffusers import (
     StableDiffusionInpaintPipelineLegacy,
     DDIMScheduler,
     LMSDiscreteScheduler,
+    StableDiffusionUpscalePipeline,
+    DPMSolverMultistepScheduler
 )
 from diffusers.models import AutoencoderKL
 from PIL import Image
@@ -242,7 +244,7 @@ def load_learned_embed_in_clip(
     text_encoder.get_input_embeddings().weight.data[token_id] = embeds
 
 
-scheduler_dict = {"PLMS": None, "DDIM": None, "K-LMS": None}
+scheduler_dict = {"PLMS": None, "DDIM": None, "K-LMS": None, "DPM": None}
 
 
 class StableDiffusionInpaint:
@@ -316,6 +318,9 @@ class StableDiffusionInpaint:
             LMSDiscreteScheduler(
                 beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
             )
+        )
+        scheduler_dict["DPM"] = prepare_scheduler(
+            DPMSolverMultistepScheduler.from_config(inpaint.scheduler.config)
         )
         self.safety_checker = inpaint.safety_checker
         save_token(token)
@@ -516,6 +521,9 @@ class StableDiffusion:
             LMSDiscreteScheduler(
                 beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear"
             )
+        )
+        scheduler_dict["DPM"] = prepare_scheduler(
+            DPMSolverMultistepScheduler.from_config(text2img.scheduler.config)
         )
         self.safety_checker = text2img.safety_checker
         img2img = StableDiffusionImg2ImgPipeline(
@@ -867,13 +875,13 @@ with blocks as demo:
                     "perlin",
                     "gaussian",
                 ],
-                value="patchmatch",
+                value="cv2_ns",
                 type="value",
             )
             postprocess_check = gr.Radio(
                 label="Photometric Correction Mode",
                 choices=["disabled", "mask_mode", "border_mode",],
-                value="disabled",
+                value="mask_mode",
                 type="value",
             )
             # canvas control
@@ -906,7 +914,7 @@ with blocks as demo:
                     )
                     sd_scheduler_eta = gr.Number(label="Eta", value=0.0)
         with gr.Column(scale=1, min_width=80):
-            sd_step = gr.Number(label="Step", value=50, precision=0)
+            sd_step = gr.Number(label="Step", value=25, precision=0)
             sd_guidance = gr.Number(label="Guidance", value=7.5)
 
     proceed_button = gr.Button("Proceed", elem_id="proceed", visible=DEBUG_MODE)
