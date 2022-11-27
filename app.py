@@ -1,3 +1,8 @@
+import subprocess
+import os.path as osp
+
+subprocess.check_call("pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers", cwd=osp.dirname(__file__), shell=True)
+
 import io
 import base64
 import os

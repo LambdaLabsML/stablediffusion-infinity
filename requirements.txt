@@ -14,4 +14,3 @@ ftfy
 fpie
 accelerate
 ninja
--e git+https://github.com/facebookresearch/xformers.git@main#egg=xformers
