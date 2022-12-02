@@ -1,7 +1,7 @@
 import subprocess
 # import os.path as osp
 import pip
-pip.main(["install","-v","-U","git+https://github.com/facebookresearch/xformers.git@main#egg=xformers"])
+# pip.main(["install","-v","-U","git+https://github.com/facebookresearch/xformers.git@main#egg=xformers"])
 # subprocess.check_call("pip install -v -U git+https://github.com/facebookresearch/xformers.git@main#egg=xformers", cwd=osp.dirname(__file__), shell=True)
 
 import io
@@ -308,7 +308,7 @@ class StableDiffusionInpaint:
                         inpaint.tokenizer,
                     )
         inpaint.to(device)
-        inpaint.enable_xformers_memory_efficient_attention()
+        # inpaint.enable_xformers_memory_efficient_attention()
         # if device == "mps":
         # _ = text2img("", num_inference_steps=1)
         scheduler_dict["PLMS"] = inpaint.scheduler

@@ -1,12 +1,12 @@
 ---
 title: Stablediffusion Infinity
-emoji: 🐨
-colorFrom: green
+emoji: ♾️
+colorFrom: blue
 colorTo: purple
 sdk: gradio
-sdk_version: 3.4
+sdk_version: 3.10.1
 app_file: app.py
-pinned: false
+pinned: true
 license: apache-2.0
 ---
 
