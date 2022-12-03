@@ -308,8 +308,11 @@ class StableDiffusionInpaint:
                         inpaint.tokenizer,
                     )
         inpaint.to(device)
-        inpaint.vae=torch.compile(inpaint.vae, dynamic=True)
-        inpaint.unet=torch.compile(inpaint.unet, dynamic=True)
+        # try:
+            # inpaint.vae=torch.compile(inpaint.vae, dynamic=True)
+            # inpaint.unet=torch.compile(inpaint.unet, dynamic=True)
+        # except Exception as e:
+            # print(e)
         # inpaint.enable_xformers_memory_efficient_attention()
         # if device == "mps":
         # _ = text2img("", num_inference_steps=1)
