@@ -14,3 +14,4 @@ ftfy
 fpie
 accelerate
 ninja
+setuptools==59.8.0
