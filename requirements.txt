@@ -3,7 +3,7 @@ imageio==2.19.5
 imageio-ffmpeg==0.4.7
 numpy==1.22.4
 opencv-python-headless==4.6.0.66
-torch[dynamo]>=0.0.dev0
+torch[dynamo]
 torchvision
 Pillow
 scipy
